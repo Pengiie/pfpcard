@@ -1,26 +1,40 @@
-// src/utils/trpc.ts
-import type { AppRouter } from "../server/router";
-import { createReactQueryHooks } from "@trpc/react";
-import type { inferProcedureOutput, inferProcedureInput } from "@trpc/server";
+import { WithTRPCConfig } from '@trpc/next'
+import { createReactQueryHooks, CreateTRPCClientOptions } from '@trpc/react'
+import { QueryClientConfig } from 'react-query'
+import superjson from 'superjson'
+import type { AppRouter } from '../server/router'
 
-export const trpc = createReactQueryHooks<AppRouter>();
+const getBaseUrl = () => {
+	if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL}` // SSR should use vercel url
+	if (process.env.RAILWAY_STATIC_URL)
+		return `https://${process.env.RAILWAY_STATIC_URL}` // live dev SSR should use vercel url
+	return `http://localhost:${process.env.PORT ?? 3000}` // dev SSR should use localhost
+}
 
-/**
- * This is a helper method to infer the output of a query resolver
- * @example type HelloOutput = inferQueryOutput<'hello'>
- */
-export type inferQueryOutput<
-  TRouteKey extends keyof AppRouter["_def"]["queries"],
-> = inferProcedureOutput<AppRouter["_def"]["queries"][TRouteKey]>;
+export const trpc = createReactQueryHooks<AppRouter>()
 
-export type inferQueryInput<
-  TRouteKey extends keyof AppRouter["_def"]["queries"],
-> = inferProcedureInput<AppRouter["_def"]["queries"][TRouteKey]>;
+export const trpcQueryClientConfig: QueryClientConfig = {
+	defaultOptions: {
+		queries: {
+			retry: false,
+			refetchOnWindowFocus: false,
+			queryKeyHashFn: superjson.stringify,
+		},
+		mutations: { retry: false },
+	},
+}
 
-export type inferMutationOutput<
-  TRouteKey extends keyof AppRouter["_def"]["mutations"],
-> = inferProcedureOutput<AppRouter["_def"]["mutations"][TRouteKey]>;
+export const trpcClientConfig: CreateTRPCClientOptions<AppRouter> &
+	WithTRPCConfig<AppRouter> = {
+	url: `${getBaseUrl()}/api/trpc`,
+	transformer: superjson,
+	queryClientConfig: trpcQueryClientConfig,
+	fetch(input, init?) {
+		return fetch(input, {
+			...init,
+			credentials: 'same-origin',
+		})
+	},
+}
 
-export type inferMutationInput<
-  TRouteKey extends keyof AppRouter["_def"]["mutations"],
-> = inferProcedureInput<AppRouter["_def"]["mutations"][TRouteKey]>;
+export const trpcClient = trpc.createClient(trpcClientConfig)
